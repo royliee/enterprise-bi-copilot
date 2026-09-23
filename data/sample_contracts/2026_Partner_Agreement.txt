@@ -1,0 +1,27 @@
+﻿================================================================================
+GLOBAL PARTNER PROGRAM & PRICING POLICY (REVISED 2026)
+Document ID: POL-2026-MSA-V3
+Effective Date: January 1, 2026
+Applicable Jurisdictions: APAC, EMEA, North America
+================================================================================
+
+1. EXECUTIVE OVERVIEW
+This policy outlines authorized discount authorizations, credit policies,
+and commercial pricing guidelines for all Enterprise Storage and Solution lines.
+
+2. DISCOUNT AUTHORIZATION THRESHOLDS
+2.1 Standard Tier Partners:
+    - Maximum standard allowable discount without VP approval: 8.0%.
+    - Maximum approved discretionary discount: 10.0%.
+
+2.2 Enterprise Tier Partners:
+    - Standard authorized discount across all regions (EMEA, NA): 12.0%.
+    - Specialized APAC Regional Provision: In accordance with APAC regional expansion
+      frameworks, the maximum allowable discount cap is strictly capped at 15.0%.
+    - Any transaction granting a discount exceeding 15.0% in the APAC territory
+      constitutes an immediate contract violation requiring formal audit review.
+
+3. PAYMENT AND SETTLEMENT TERMS
+    - Standard commercial payment timeline: Net 45 days from invoice issuance.
+    - Tier-1 Enterprise clients maintain maximum line-of-credit threshold of $150,000 USD.
+================================================================================
