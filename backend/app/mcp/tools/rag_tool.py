@@ -2,7 +2,6 @@
 import re
 from pathlib import Path
 from typing import List, Dict, Any
-import chromadb
 from rank_bm25 import BM25Okapi
 
 # Point directly to enterprise-bi-copilot (parents[4])
@@ -12,8 +11,13 @@ CHROMA_DIR = ROOT_DIR / "data" / "chroma_store"
 
 class HybridRetriever:
     def __init__(self):
-        self.chroma_client = chromadb.PersistentClient(path=str(CHROMA_DIR))
-        self.collection = self.chroma_client.get_or_create_collection(name="enterprise_policies")
+        self.dense_enabled = os.getenv("ENABLE_DENSE_RAG", "true").lower() == "true"
+        self.collection = None
+        if self.dense_enabled:
+            import chromadb
+
+            self.chroma_client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+            self.collection = self.chroma_client.get_or_create_collection(name="enterprise_policies")
         self.documents: List[str] = []
         self.doc_ids: List[str] = []
         self.bm25 = None
@@ -48,12 +52,12 @@ class HybridRetriever:
         tokenized_corpus = [re.findall(r'\w+', doc.lower()) for doc in chunks]
         self.bm25 = BM25Okapi(tokenized_corpus)
 
-        # Upsert into ChromaDB
-        self.collection.upsert(
-            documents=chunks,
-            ids=ids,
-            metadatas=[{"source": "sample_contract"} for _ in ids]
-        )
+        if self.dense_enabled and self.collection is not None:
+            self.collection.upsert(
+                documents=chunks,
+                ids=ids,
+                metadatas=[{"source": "sample_contract"} for _ in ids]
+            )
 
     def search(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
         results = []
@@ -76,14 +80,15 @@ class HybridRetriever:
                         })
 
         # 2. Dense ChromaDB
-        try:
-            chroma_res = self.collection.query(query_texts=[query_clean], n_results=top_k)
-            if chroma_res and chroma_res.get("documents") and chroma_res["documents"][0]:
-                for doc in chroma_res["documents"][0]:
-                    if not any(r["text"] == doc for r in results):
-                        results.append({"text": doc, "source": "chroma_dense", "score": 1.0})
-        except Exception:
-            pass
+        if self.dense_enabled and self.collection is not None:
+            try:
+                chroma_res = self.collection.query(query_texts=[query_clean], n_results=top_k)
+                if chroma_res and chroma_res.get("documents") and chroma_res["documents"][0]:
+                    for doc in chroma_res["documents"][0]:
+                        if not any(r["text"] == doc for r in results):
+                            results.append({"text": doc, "source": "chroma_dense", "score": 1.0})
+            except Exception:
+                pass
 
         return results[:top_k]
 

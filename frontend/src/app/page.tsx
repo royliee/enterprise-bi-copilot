@@ -1,7 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useState } from "react";
+import {
+  Children,
+  FormEvent,
+  isValidElement,
+  type ComponentPropsWithoutRef,
+  type ReactNode,
+  useState,
+} from "react";
 import {
   ArrowUpRight,
   BarChart3,
@@ -57,6 +64,7 @@ const initialSteps: Step[] = [
 ];
 const starterPrompt =
   "Audit APAC enterprise orders for discounts above the partner agreement cap";
+const actionBreakToken = "\uE000";
 
 function formatValue(value: RecordValue) {
   if (value === null || value === undefined) return "-";
@@ -118,7 +126,8 @@ export default function Home() {
       ),
     );
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/chat", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+      const response = await fetch(`${apiUrl}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: query.trim() }),
@@ -127,31 +136,74 @@ export default function Home() {
         throw new Error(`Backend returned ${response.status}`);
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let buffer = "";
+      let lineBuffer = "";
       let currentEvent = "message";
       const handleEvent = (eventName: string, data: string) => {
         if (!data) return;
-        const payload = JSON.parse(data);
-        if (eventName === "error")
+        let payload: {
+          step?: string;
+          message?: string;
+          node?: string;
+          error?: string;
+          trace?: {
+            message?: string;
+            sql_generated?: string;
+            rag_query?: string;
+          };
+          final_response?: string;
+          sql_query?: string;
+          sql_results?: { row_count?: number; data?: SqlRecord[] };
+          rag_results?: {
+            results?: { text: string; source: string; score: number }[];
+          };
+        };
+        try {
+          payload = JSON.parse(data);
+        } catch (parseError) {
+          console.warn("Ignoring malformed SSE data payload", parseError);
+          return;
+        }
+
+        if (eventName === "error") {
           throw new Error(payload.error || "The audit failed");
+        }
         if (eventName === "step") {
-          const node = payload.node || "planner";
-          updateStep(
-            node,
-            "complete",
-            payload.trace?.message || "Completed successfully",
-          );
-          const next =
-            node === "planner"
-              ? "sql_executor"
-              : node === "sql_executor"
-                ? "rag_executor"
-                : node === "rag_executor"
-                  ? "synthesizer"
-                  : "";
-          if (next) updateStep(next, "active");
-          if (payload.trace?.sql_generated)
-            setSqlQuery(payload.trace.sql_generated);
+          if (payload.step === "start") {
+            updateStep(
+              "planner",
+              "active",
+              payload.message || "Analyzing request",
+            );
+          } else if (payload.node === "planner") {
+            updateStep(
+              "planner",
+              "complete",
+              payload.trace?.message || "Planning complete",
+            );
+            updateStep("sql_executor", "active", "Querying live transactions");
+          } else if (payload.node === "sql_executor") {
+            updateStep(
+              "sql_executor",
+              "complete",
+              payload.trace?.message || "Transaction audit complete",
+            );
+            updateStep("rag_executor", "active", "Retrieving policy evidence");
+            if (payload.trace?.sql_generated)
+              setSqlQuery(payload.trace.sql_generated);
+          } else if (payload.node === "rag_executor") {
+            updateStep(
+              "rag_executor",
+              "complete",
+              payload.trace?.message || "Policy retrieval complete",
+            );
+            updateStep("synthesizer", "active", "Cross-referencing findings");
+          } else if (payload.node === "synthesizer") {
+            updateStep(
+              "synthesizer",
+              "active",
+              payload.trace?.message || "Finalizing audit report",
+            );
+          }
         }
         if (eventName === "final") {
           setReport(payload.final_response || "No report was returned.");
@@ -165,23 +217,29 @@ export default function Home() {
               detail: "Completed successfully",
             })),
           );
+          setIsRunning(false);
         }
       };
       while (true) {
         const { value, done } = await reader.read();
-        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-        const events = buffer.split("\n\n");
-        buffer = events.pop() || "";
-        for (const rawEvent of events) {
-          let data = "";
-          for (const line of rawEvent.split("\n")) {
-            if (line.startsWith("event:")) currentEvent = line.slice(6).trim();
-            if (line.startsWith("data:")) data += line.slice(5).trim();
+        lineBuffer += decoder.decode(value || new Uint8Array(), {
+          stream: !done,
+        });
+        const lines = lineBuffer.split("\n");
+        lineBuffer = lines.pop() || "";
+        for (const rawLine of lines) {
+          const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+          if (line.startsWith("event:")) {
+            currentEvent = line.slice(6).trim();
+          } else if (line.startsWith("data:")) {
+            handleEvent(currentEvent, line.slice(5).trim());
+            currentEvent = "message";
           }
-          handleEvent(currentEvent, data);
-          currentEvent = "message";
         }
         if (done) break;
+      }
+      if (lineBuffer.startsWith("data:")) {
+        handleEvent(currentEvent, lineBuffer.slice(5).trim());
       }
     } catch (runError) {
       const message =
@@ -213,6 +271,51 @@ export default function Home() {
       Number(record.discount_pct) >
       (String(record.region).toUpperCase() === "APAC" ? 15 : 12),
   ).length;
+
+  const markdownComponents = {
+    td: ({
+      children,
+      ...props
+    }: ComponentPropsWithoutRef<"td"> & { children?: ReactNode }) => {
+      const readText = (node: ReactNode): string => {
+        if (typeof node === "string" || typeof node === "number") {
+          return String(node);
+        }
+        if (Array.isArray(node)) {
+          return node.map(readText).join("");
+        }
+        if (isValidElement(node)) {
+          if (node.type === "br") return actionBreakToken;
+          return readText((node.props as { children?: ReactNode }).children);
+        }
+        return "";
+      };
+      const text = readText(Children.toArray(children)).replace(
+        /<br\s*\/?>/gi,
+        actionBreakToken,
+      );
+      const hasBreakMarkup =
+        text.includes(actionBreakToken) || /<br\s*\/?>/i.test(text);
+      const lines = text
+        .split(actionBreakToken)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+      if (!hasBreakMarkup || lines.length <= 1) {
+        return <td {...props}>{children}</td>;
+      }
+
+      return (
+        <td {...props} className="action-cell">
+          {lines.map((line, index) => (
+            <span className="action-line" key={`${line}-${index}`}>
+              {line}
+            </span>
+          ))}
+        </td>
+      );
+    },
+  };
 
   return (
     <main className="app-shell">
@@ -246,8 +349,9 @@ export default function Home() {
           </p>
           <h1>
             Compliance, with
-            <br />
-            <em>receipts.</em>
+            <span className="hero-line">
+              <em>receipts.</em>
+            </span>
           </h1>
           <p className="hero-description">
             Cross-reference live commercial activity with the policies that
@@ -259,8 +363,7 @@ export default function Home() {
           <strong>01</strong>
           <small>
             Structured + semantic
-            <br />
-            evidence in one view
+            <span>evidence in one view</span>
           </small>
         </div>
       </section>
@@ -489,8 +592,11 @@ export default function Home() {
             </div>
             {report ? (
               <div className="markdown-content">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {report}
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={markdownComponents}
+                >
+                  {report.replace(/<br\s*\/?>/gi, actionBreakToken)}
                 </ReactMarkdown>
               </div>
             ) : (
