@@ -12,6 +12,10 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 DB_PATH = Path(__file__).resolve().parents[2] / "database" / "enterprise.db"
 FORBIDDEN = ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "TRUNCATE", "REPLACE"]
 
+def _connect_postgres():
+    import psycopg
+    return psycopg.connect(DATABASE_URL)
+
 def _sanitize_record(record: Dict[str, Any]) -> Dict[str, Any]:
     sanitized = {}
     for k, v in record.items():
@@ -26,8 +30,7 @@ def _sanitize_record(record: Dict[str, Any]) -> Dict[str, Any]:
 def get_database_schema() -> str:
     """Returns database schemas from Supabase Postgres or local SQLite."""
     if DATABASE_URL and DATABASE_URL.startswith("postgresql"):
-        import psycopg2
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = _connect_postgres()
         cursor = conn.cursor()
         cursor.execute("""
             SELECT table_name, column_name, data_type 
@@ -61,13 +64,12 @@ def execute_readonly_query(sql_query: str) -> Dict[str, Any]:
 
     try:
         if DATABASE_URL and DATABASE_URL.startswith("postgresql"):
-            import psycopg2
-            from psycopg2.extras import RealDictCursor
-            conn = psycopg2.connect(DATABASE_URL)
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            from psycopg.rows import dict_row
+            conn = _connect_postgres()
+            cursor = conn.cursor(row_factory=dict_row)
             cursor.execute(sql_query)
             rows = cursor.fetchall()
-            result = [_sanitize_record(dict(row)) for row in rows]
+            result = [_sanitize_record(row) for row in rows]
             conn.close()
             return {"row_count": len(result), "data": result}
         else:

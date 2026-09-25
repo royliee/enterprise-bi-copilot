@@ -8,9 +8,9 @@ from pathlib import Path
 import pandas as pd
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
-from sqlalchemy import create_engine
+from sqlalchemy import MetaData, Table, create_engine, delete, inspect
 from pypdf import PdfReader
 
 from backend.app.agent.graph import bi_agent
@@ -29,6 +29,8 @@ app.add_middleware(
 
 class QueryRequest(BaseModel):
     message: str
+    messages: list[dict[str, str]] = Field(default_factory=list)
+    audit_context: dict[str, object] | None = None
 
 
 def require_tenant_id(x_tenant_id: str | None) -> str:
@@ -48,7 +50,20 @@ async def chat_endpoint(payload: QueryRequest, x_tenant_id: str | None = Header(
     tenant_id = require_tenant_id(x_tenant_id)
 
     async def event_generator():
-        initial_state = AgentState(user_query=payload.message, tenant_id=tenant_id)
+        messages = list(payload.messages)
+        if not messages or messages[-1].get("content") != payload.message:
+            messages.append({"role": "user", "content": payload.message})
+        audit_context = payload.audit_context or {}
+        initial_state = AgentState(
+            user_query=payload.message,
+            tenant_id=tenant_id,
+            messages=messages,
+            final_response=str(audit_context.get("report", "")),
+            executive_summary=str(audit_context.get("executive_summary", "")),
+            detailed_findings=str(audit_context.get("detailed_findings", "")),
+            sql_results=audit_context.get("sql_results"),
+            rag_results=audit_context.get("rag_results"),
+        )
         
         yield {
             "event": "step",
@@ -78,6 +93,8 @@ async def chat_endpoint(payload: QueryRequest, x_tenant_id: str | None = Header(
                             "event": "final",
                             "data": json.dumps({
                                 "final_response": node_output.get("final_response"),
+                                "executive_summary": accumulated_state.get("executive_summary", ""),
+                                "detailed_findings": accumulated_state.get("detailed_findings", ""),
                                 "sql_query": accumulated_state.get("sql_query"),
                                 "sql_results": accumulated_state.get("sql_results"),
                                 "rag_results": accumulated_state.get("rag_results")
@@ -105,9 +122,16 @@ async def upload_csv(file: UploadFile = File(...), x_tenant_id: str | None = Hea
     try:
         dataframe = pd.read_csv(BytesIO(await file.read()))
         dataframe["tenant_id"] = tenant_id
-        engine = create_engine(database_url)
+        engine_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+        engine = create_engine(engine_url)
         table_name = os.getenv("CSV_TABLE_NAME", "business_data")
-        dataframe.to_sql(table_name, engine, if_exists="append", index=False)
+        with engine.begin() as connection:
+            if inspect(connection).has_table(table_name):
+                table = Table(table_name, MetaData(), autoload_with=connection)
+                if "tenant_id" not in table.c:
+                    raise ValueError(f"Table '{table_name}' is missing the tenant_id column")
+                connection.execute(delete(table).where(table.c.tenant_id == tenant_id))
+            dataframe.to_sql(table_name, connection, if_exists="append", index=False)
         engine.dispose()
     except Exception as error:
         raise HTTPException(status_code=500, detail=f"CSV upload failed: {error}") from error

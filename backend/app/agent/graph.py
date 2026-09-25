@@ -1,6 +1,15 @@
 ﻿from langgraph.graph import StateGraph, END
 from backend.app.agent.state import AgentState
-from backend.app.agent.nodes import planner_node, sql_node, rag_node, synthesizer_node, sql_failure_node
+from backend.app.agent.nodes import (
+    follow_up_chat_node,
+    initialize_run_node,
+    planner_node,
+    router_node,
+    sql_node,
+    rag_node,
+    synthesizer_node,
+    sql_failure_node,
+)
 
 def build_bi_agent_graph():
     workflow = StateGraph(AgentState)
@@ -11,20 +20,37 @@ def build_bi_agent_graph():
     workflow.add_node("rag_executor", rag_node)
     workflow.add_node("synthesizer", synthesizer_node)
     workflow.add_node("sql_failure", sql_failure_node)
+    workflow.add_node("initialize_run", initialize_run_node)
+    workflow.add_node("router", router_node)
+    workflow.add_node("follow_up_chat", follow_up_chat_node)
 
     # Set edge flow
-    workflow.set_entry_point("planner")
+    workflow.set_entry_point("router")
+    workflow.add_conditional_edges(
+        "router",
+        lambda state: state.conversation_route,
+        {"new_audit": "initialize_run", "follow_up": "follow_up_chat"},
+    )
+    workflow.add_edge("initialize_run", "planner")
     workflow.add_edge("planner", "rag_executor")
     workflow.add_edge("rag_executor", "sql_executor")
     workflow.add_conditional_edges(
         "sql_executor",
-        lambda state: "retry" if state.error_message and state.retry_count <= 3 else (
+        lambda state: (
+            "logical_retry" if state.current_step == "sql_logical_retry" else
+            "retry" if state.error_message and state.retry_count <= 3 else
             "failed" if state.error_message else "success"
         ),
-        {"retry": "sql_executor", "failed": "sql_failure", "success": "synthesizer"},
+        {
+            "logical_retry": "sql_executor",
+            "retry": "sql_executor",
+            "failed": "sql_failure",
+            "success": "synthesizer",
+        },
     )
     workflow.add_edge("sql_failure", END)
     workflow.add_edge("synthesizer", END)
+    workflow.add_edge("follow_up_chat", END)
 
     return workflow.compile()
 

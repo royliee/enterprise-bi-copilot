@@ -696,6 +696,109 @@ footer {
   font-size: 11px;
   text-align: center;
 }
+.chat-panel {
+  margin-top: 28px;
+  border: 1px solid var(--line);
+  background: var(--white);
+  box-shadow: 0 8px 24px rgba(25, 58, 67, 0.035);
+}
+.chat-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 26px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.chat-heading h2 {
+  margin: 8px 0 0;
+  font: 600 22px "Space Grotesk";
+}
+.chat-context {
+  color: var(--muted);
+  font: 9px "DM Mono";
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.chat-history {
+  max-height: 300px;
+  min-height: 120px;
+  padding: 16px 26px;
+  overflow-y: auto;
+}
+.chat-message {
+  max-width: 82%;
+  margin-bottom: 14px;
+  padding: 11px 13px;
+  border-left: 2px solid var(--line);
+  background: #f1f5f0;
+}
+.chat-message.user {
+  margin-left: auto;
+  border-left: 0;
+  border-right: 2px solid var(--green);
+  background: #e8f2eb;
+  text-align: right;
+}
+.chat-message span {
+  color: var(--green);
+  font: 9px "DM Mono";
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.chat-message p {
+  margin: 5px 0 0;
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.chat-empty {
+  display: grid;
+  min-height: 88px;
+  place-items: center;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+.chat-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 9px;
+  padding: 14px 26px 20px;
+}
+.chat-form input {
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  padding: 12px 13px;
+  color: var(--ink);
+  font-size: 11px;
+  outline: 0;
+}
+.chat-form input:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px #dff2e8;
+}
+.chat-form button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  background: var(--navy);
+  color: #fff;
+  padding: 0 15px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.chat-form button:hover:not(:disabled) {
+  background: #24515b;
+}
+.chat-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
 .markdown-content {
   min-width: 0;
   max-width: 100%;

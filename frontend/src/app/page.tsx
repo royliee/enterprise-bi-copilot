@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import Chat, { type ChatMessage } from "./components/Chat";
 
 type Step = {
   id: string;
@@ -94,6 +95,9 @@ export default function Home() {
     { text: string; source: string; score: number }[]
   >([]);
   const [report, setReport] = useState("");
+  const [executiveSummary, setExecutiveSummary] = useState("");
+  const [detailedFindings, setDetailedFindings] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [activeTab, setActiveTab] = useState<"records" | "query" | "evidence">(
     "records",
   );
@@ -190,15 +194,29 @@ export default function Home() {
     );
   }
 
-  async function runAudit(event?: FormEvent) {
+  async function runAudit(
+    event?: FormEvent,
+    messageOverride?: string,
+    isFollowUp = false,
+  ) {
     event?.preventDefault();
-    if (!query.trim() || isRunning) return;
+    const submittedMessage = (messageOverride ?? query).trim();
+    if (!submittedMessage || isRunning) return;
     setIsRunning(true);
     setError("");
-    setReport("");
-    setRecords([]);
-    setRagResults([]);
-    setSqlQuery("");
+    if (!isFollowUp) {
+      setReport("");
+      setExecutiveSummary("");
+      setDetailedFindings("");
+      setRecords([]);
+      setRagResults([]);
+      setSqlQuery("");
+    }
+    const nextMessages: ChatMessage[] = [
+      ...messages,
+      { role: "user", content: submittedMessage },
+    ];
+    setMessages(nextMessages);
     setSteps(
       initialSteps.map((step, index) =>
         index === 0
@@ -218,7 +236,19 @@ export default function Home() {
           "Content-Type": "application/json",
           "X-Tenant-ID": tenantId,
         },
-        body: JSON.stringify({ message: query.trim() }),
+        body: JSON.stringify({
+          message: submittedMessage,
+          messages: nextMessages,
+          audit_context: report
+            ? {
+                report,
+                executive_summary: executiveSummary,
+                detailed_findings: detailedFindings,
+                sql_results: records.length ? { data: records } : null,
+                rag_results: ragResults.length ? { results: ragResults } : null,
+              }
+            : null,
+        }),
       });
       if (!response.ok || !response.body)
         throw new Error(`Backend returned ${response.status}`);
@@ -239,6 +269,8 @@ export default function Home() {
             rag_query?: string;
           };
           final_response?: string;
+          executive_summary?: string;
+          detailed_findings?: string;
           sql_query?: string;
           sql_results?: { row_count?: number; data?: SqlRecord[] };
           rag_results?: {
@@ -297,7 +329,15 @@ export default function Home() {
           }
         }
         if (eventName === "final") {
-          setReport(payload.final_response || "No report was returned.");
+          const finalResponse =
+            payload.final_response || "No report was returned.";
+          setReport(finalResponse);
+          setExecutiveSummary(payload.executive_summary || "");
+          setDetailedFindings(payload.detailed_findings || "");
+          setMessages((current) => [
+            ...current,
+            { role: "assistant", content: finalResponse },
+          ]);
           setSqlQuery(payload.sql_query || "");
           setRecords(payload.sql_results?.data || []);
           setRagResults(payload.rag_results?.results || []);
@@ -352,6 +392,10 @@ export default function Home() {
     } finally {
       setIsRunning(false);
     }
+  }
+
+  function submitFollowUp(message: string) {
+    void runAudit(undefined, message, true);
   }
 
   const completedCount = steps.filter(
@@ -711,6 +755,11 @@ export default function Home() {
               </div>
             )}
           </div>
+          <Chat
+            messages={messages}
+            disabled={isRunning || !report}
+            onSubmit={submitFollowUp}
+          />
         </div>
       </section>
       <footer>
