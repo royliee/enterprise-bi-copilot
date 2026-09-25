@@ -62,7 +62,6 @@ export default function Chat({
                 ) : (
                   <p>{message.content}</p>
                 )}
-                <div ref={messagesEndRef} />
               </div>
             </div>
           ))
@@ -71,6 +70,7 @@ export default function Chat({
             Ask a question after your audit report is ready.
           </div>
         )}
+        <div ref={messagesEndRef} />
       </div>
       <form className="chat-form" onSubmit={handleSubmit}>
         <input

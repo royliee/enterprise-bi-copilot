@@ -143,7 +143,8 @@ def sql_node(state: AgentState) -> Dict[str, Any]:
     schema = get_active_table_schema(state.tenant_id)
     llm = get_llm()
     policy_context = "\n---\n".join(
-        result["text"] for result in (state.rag_results or {}).get("results", [])
+        "Metadata: " + json.dumps(result.get("metadata", {})) + "\n" + result["text"]
+        for result in (state.rag_results or {}).get("results", [])
     ) or "No policy documents matched this request."
     retry_context = (
         f"PREVIOUS SQL ERROR (rewrite the query to fix it): {state.error_message}"
@@ -253,7 +254,7 @@ Return ONLY the search query string with no explanation."""
     search_query = response.content.strip().strip('"')
     
     trace.append({"step": "rag_search", "rag_query": search_query})
-    retrieved = search_policy_documents(search_query, tenant_id=state.tenant_id, top_k=2)
+    retrieved = search_policy_documents(search_query, tenant_id=state.tenant_id, top_k=8)
     
     return {
         "rag_query": search_query,
@@ -271,9 +272,8 @@ def synthesizer_node(state: AgentState) -> Dict[str, Any]:
     
     prompt = f"""You are an Enterprise Business Intelligence analyst. Your job is to synthesize database results and corporate policy.
 
-You must structure your response using exactly these two sections:
-1. **Executive Summary**: A brief 1-3 sentence summary of the findings and a brief mention of the relevant policy rule.
-2. **Detailed Findings**: A clear markdown table showing the exact numerical results derived from the database query.
+Provide a clear answer first. If the answer is quantitative, follow it with a compact Markdown table containing only the exact values from the database results. End with a short, human-readable derivation note.
+Thoroughly review every retrieved context chunk, including adjacent clauses, subsections, conditions, exceptions, and membership or option language, before stating that a policy rule or provision is missing. When a policy applies, provide the complete rule supported by the retrieved text rather than an isolated sentence.
 
 CRITICAL CONSTRAINTS:
 - ZERO MATH RULE: You are strictly forbidden from performing any mathematical calculations (e.g., calculating percentage differences, sums, or absolute differences). You must ONLY report the exact numbers provided to you in the database query results.
@@ -283,7 +283,10 @@ CRITICAL CONSTRAINTS:
 - DO NOT generate an 'Evidence' section.
 - DO NOT generate an 'Interpretation' section.
 - DO NOT generate 'Recommended Next Steps', 'Action Items', or any business advice.
-- Stop generating text immediately after the Detailed Findings table.
+- Derivation note: explain the calculation in 1-2 plain sentences, such as "Derived by summing the 'Total' column for records where 'Product line' is 'Electronic accessories' and 'Payment' method is 'Ewallet'."
+- If a policy document is relevant, add exactly one clean citation line in this format: "Policy Reference: [document title], [section title or clause], Page [number]." Use a section or page only when explicitly present in the retrieved context; otherwise omit the citation line.
+- Build citations only from the retrieved Metadata fields: document_title, section_title, and page. Never infer a document title, section, or page number.
+- DO NOT output raw bm25 labels, full document text excerpts, or raw SQL syntax blocks unless the user explicitly requests them.
 
 User Question:
 {state.user_query}

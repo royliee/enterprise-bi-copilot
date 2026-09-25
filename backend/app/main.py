@@ -165,11 +165,8 @@ async def upload_pdf(file: UploadFile = File(...), x_tenant_id: str | None = Hea
 
     try:
         reader = PdfReader(BytesIO(await file.read()))
-        text = "\n\n".join(page.extract_text() or "" for page in reader.pages)
-        chunks = [chunk.strip() for chunk in text.split("\n\n") if len(chunk.strip()) > 30]
-        if not chunks and text.strip():
-            chunks = [text.strip()]
-        chunk_count = retriever.add_documents(chunks, tenant_id, Path(file.filename).stem)
+        pages = [page.extract_text() or "" for page in reader.pages]
+        chunk_count = retriever.add_document_pages(pages, tenant_id, Path(file.filename).stem)
     except Exception as error:
         raise HTTPException(status_code=500, detail=f"PDF upload failed: {error}") from error
 
