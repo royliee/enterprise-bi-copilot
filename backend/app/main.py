@@ -73,7 +73,7 @@ async def chat_endpoint(payload: QueryRequest, x_tenant_id: str | None = Header(
                     }
                     await asyncio.sleep(0.05)
 
-                    if node_name == "synthesizer" and node_output.get("final_response"):
+                    if node_name in {"synthesizer", "sql_failure"} and node_output.get("final_response"):
                         yield {
                             "event": "final",
                             "data": json.dumps({

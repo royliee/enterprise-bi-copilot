@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field
 class AgentState(BaseModel):
     user_query: str
     tenant_id: str
+    error_message: str | None = None
+    retry_count: int = 0
     plan: List[str] = Field(default_factory=list)
     sql_query: Optional[str] = None
     sql_results: Optional[Dict[str, Any]] = None

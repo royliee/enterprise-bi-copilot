@@ -66,7 +66,7 @@ const initialSteps: Step[] = [
   },
 ];
 const starterPrompt =
-  "Audit APAC enterprise orders for discounts above the partner agreement cap";
+  "Summarize the key trends and risks in my uploaded business data";
 const actionBreakToken = "\uE000";
 
 function formatValue(value: RecordValue) {
@@ -268,14 +268,17 @@ export default function Home() {
               "complete",
               payload.trace?.message || "Planning complete",
             );
-            updateStep("sql_executor", "active", "Querying live transactions");
+            updateStep(
+              "rag_executor",
+              "active",
+              "Retrieving relevant documents",
+            );
           } else if (payload.node === "sql_executor") {
             updateStep(
               "sql_executor",
               "complete",
               payload.trace?.message || "Transaction audit complete",
             );
-            updateStep("rag_executor", "active", "Retrieving policy evidence");
             if (payload.trace?.sql_generated)
               setSqlQuery(payload.trace.sql_generated);
           } else if (payload.node === "rag_executor") {
@@ -284,7 +287,7 @@ export default function Home() {
               "complete",
               payload.trace?.message || "Policy retrieval complete",
             );
-            updateStep("synthesizer", "active", "Cross-referencing findings");
+            updateStep("sql_executor", "active", "Querying uploaded data");
           } else if (payload.node === "synthesizer") {
             updateStep(
               "synthesizer",
@@ -354,12 +357,6 @@ export default function Home() {
   const completedCount = steps.filter(
     (step) => step.status === "complete",
   ).length;
-  const violationCount = records.filter(
-    (record) =>
-      Number(record.discount_pct) >
-      (String(record.region).toUpperCase() === "APAC" ? 15 : 12),
-  ).length;
-
   const markdownComponents = {
     td: ({
       children,
@@ -467,7 +464,7 @@ export default function Home() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               rows={5}
-              placeholder="Ask about orders, customers, discounts..."
+              placeholder="Ask about your uploaded data and documents..."
             />
             <button
               className="run-button"
@@ -492,10 +489,12 @@ export default function Home() {
             </button>
             <button
               onClick={() =>
-                setQuery("Which orders exceed the approved discount threshold?")
+                setQuery(
+                  "Which records require attention based on the uploaded documents?",
+                )
               }
             >
-              Which orders exceed the approved discount threshold?
+              Which records require attention based on the uploaded documents?
             </button>
           </div>
           <div className="connection-card">
@@ -581,9 +580,11 @@ export default function Home() {
               <span>Policy matches</span>
               <strong>{ragResults.length || "-"}</strong>
             </div>
-            <div className={violationCount ? "metric-alert" : ""}>
-              <span>Potential violations</span>
-              <strong>{records.length ? violationCount : "-"}</strong>
+            <div>
+              <span>Fields returned</span>
+              <strong>
+                {records.length ? Object.keys(records[0]).length : "-"}
+              </strong>
             </div>
             <div>
               <span>Source confidence</span>
@@ -626,17 +627,8 @@ export default function Home() {
                       {records.map((record, index) => (
                         <tr key={index}>
                           {Object.keys(records[0]).map((key) => (
-                            <td
-                              key={key}
-                              className={
-                                key === "discount_pct" &&
-                                Number(record[key]) > 15
-                                  ? "cell-alert"
-                                  : ""
-                              }
-                            >
+                            <td key={key} className="">
                               {formatValue(record[key])}
-                              {key === "discount_pct" ? "%" : ""}
                             </td>
                           ))}
                         </tr>
@@ -649,11 +641,9 @@ export default function Home() {
                     <strong>
                       {isRunning
                         ? "Waiting for transaction records"
-                        : "Your audit results will appear here"}
+                        : "Your analysis results will appear here"}
                     </strong>
-                    <span>
-                      Run an audit to inspect the live order register.
-                    </span>
+                    <span>Run an analysis to inspect the uploaded data.</span>
                   </div>
                 )}
               </div>
