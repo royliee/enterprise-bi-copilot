@@ -235,17 +235,7 @@ Answer directly and concisely."""
     response = llm.invoke(prompt).content
     messages = [*state.messages, {"role": "assistant", "content": response}]
     trace.append({"step": "follow_up", "message": "Answered from the current audit context without rerunning SQL."})
-    original_summary = response.strip()
-    cleaned_summary = re.sub(r'\*+', '', original_summary).strip()
-    executive_summary = cleaned_summary
-    detailed_findings = state.detailed_findings
     return {
-        "final_response": response,
-        "executive_summary": executive_summary,
-        "detailed_findings": detailed_findings,
-        "sql_query": state.sql_query,
-        "sql_results": state.sql_results,
-        "rag_results": state.rag_results,
         "messages": messages,
         "current_step": "done",
         "execution_trace": trace,

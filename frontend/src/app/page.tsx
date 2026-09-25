@@ -269,6 +269,7 @@ export default function Home() {
             rag_query?: string;
           };
           final_response?: string;
+          follow_up?: boolean;
           executive_summary?: string;
           detailed_findings?: string;
           sql_query?: string;
@@ -331,16 +332,29 @@ export default function Home() {
         if (eventName === "final") {
           const finalResponse =
             payload.final_response || "No report was returned.";
-          setReport(finalResponse);
-          setExecutiveSummary(payload.executive_summary || "");
-          setDetailedFindings(payload.detailed_findings || "");
-          setMessages((current) => [
-            ...current,
-            { role: "assistant", content: finalResponse },
-          ]);
-          setSqlQuery(payload.sql_query || "");
-          setRecords(payload.sql_results?.data || []);
-          setRagResults(payload.rag_results?.results || []);
+          const isFollowUpResponse = payload.follow_up === true;
+          if (!isFollowUpResponse) {
+            setReport(finalResponse);
+            setExecutiveSummary(payload.executive_summary || "");
+            setDetailedFindings(payload.detailed_findings || "");
+          }
+          setMessages((current) =>
+            isFollowUp
+              ? [...current, { role: "assistant", content: finalResponse }]
+              : [
+                  ...current,
+                  {
+                    role: "assistant",
+                    content:
+                      "I have the audit report ready. What would you like to know?",
+                  },
+                ],
+          );
+          if (!isFollowUpResponse) {
+            setSqlQuery(payload.sql_query || "");
+            setRecords(payload.sql_results?.data || []);
+            setRagResults(payload.rag_results?.results || []);
+          }
           setSteps((current) =>
             current.map((step) => ({
               ...step,
@@ -757,7 +771,8 @@ export default function Home() {
           </div>
           <Chat
             messages={messages}
-            disabled={isRunning || !report}
+            disabled={!report || isRunning}
+            isLoading={isRunning}
             onSubmit={submitFollowUp}
           />
         </div>

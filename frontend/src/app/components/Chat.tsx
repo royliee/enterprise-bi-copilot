@@ -1,19 +1,32 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { ArrowUpRight, LoaderCircle, Sparkles } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
 type ChatProps = {
   messages: ChatMessage[];
   disabled: boolean;
+  isLoading: boolean;
   onSubmit: (message: string) => void;
 };
 
-export default function Chat({ messages, disabled, onSubmit }: ChatProps) {
+export default function Chat({
+  messages,
+  disabled,
+  isLoading,
+  onSubmit,
+}: ChatProps) {
   const [input, setInput] = useState("");
 
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     const message = input.trim();
@@ -41,7 +54,16 @@ export default function Chat({ messages, disabled, onSubmit }: ChatProps) {
               key={`${message.role}-${index}`}
             >
               <span>{message.role === "user" ? "You" : "Northstar"}</span>
-              <p>{message.content}</p>
+              <div className="chat-message-content whitespace-pre-wrap leading-relaxed">
+                {message.role === "assistant" ? (
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {message.content}
+                  </ReactMarkdown>
+                ) : (
+                  <p>{message.content}</p>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
             </div>
           ))
         ) : (
@@ -59,12 +81,12 @@ export default function Chat({ messages, disabled, onSubmit }: ChatProps) {
           disabled={disabled}
         />
         <button type="submit" disabled={disabled || !input.trim()}>
-          {disabled ? (
+          {isLoading ? (
             <LoaderCircle className="spin" size={16} />
           ) : (
             <ArrowUpRight size={16} />
           )}
-          Ask
+          {isLoading ? "AI is typing..." : "Ask"}
         </button>
       </form>
     </section>

@@ -100,6 +100,24 @@ async def chat_endpoint(payload: QueryRequest, x_tenant_id: str | None = Header(
                                 "rag_results": accumulated_state.get("rag_results")
                             })
                         }
+                    elif node_name == "follow_up_chat":
+                        assistant_messages = [
+                            message for message in node_output.get("messages", [])
+                            if message.get("role") == "assistant"
+                        ]
+                        if assistant_messages:
+                            yield {
+                                "event": "final",
+                                "data": json.dumps({
+                                    "follow_up": True,
+                                    "final_response": assistant_messages[-1].get("content", ""),
+                                    "executive_summary": initial_state.executive_summary,
+                                    "detailed_findings": initial_state.detailed_findings,
+                                    "sql_query": audit_context.get("sql_query"),
+                                    "sql_results": initial_state.sql_results,
+                                    "rag_results": initial_state.rag_results,
+                                })
+                            }
         except Exception as e:
             yield {
                 "event": "error",
