@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 class AgentState(BaseModel):
     user_query: str
+    tenant_id: str
     plan: List[str] = Field(default_factory=list)
     sql_query: Optional[str] = None
     sql_results: Optional[Dict[str, Any]] = None

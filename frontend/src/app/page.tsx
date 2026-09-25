@@ -15,13 +15,16 @@ import {
   CheckCircle2,
   CircleAlert,
   Database,
+  FileSpreadsheet,
   FileSearch,
+  FileText,
   LoaderCircle,
   Play,
   Radio,
   ShieldCheck,
   Sparkles,
   TerminalSquare,
+  Upload,
   XCircle,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -80,6 +83,7 @@ function stepForNode(node: string) {
 }
 
 export default function Home() {
+  const tenantId = "user_123";
   const [query, setQuery] = useState(starterPrompt);
   const [steps, setSteps] = useState(initialSteps);
   const [isRunning, setIsRunning] = useState(false);
@@ -93,6 +97,87 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<"records" | "query" | "evidence">(
     "records",
   );
+  const [uploadStatus, setUploadStatus] = useState<Record<string, string>>({});
+
+  async function uploadFile(kind: "csv" | "pdf", file: File) {
+    const expectedExtension = kind === "csv" ? ".csv" : ".pdf";
+    if (!file.name.toLowerCase().endsWith(expectedExtension)) {
+      setUploadStatus((current) => ({
+        ...current,
+        [kind]: `Choose a ${kind.toUpperCase()} file`,
+      }));
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    setUploadStatus((current) => ({ ...current, [kind]: "Uploading..." }));
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+      const response = await fetch(`${apiUrl}/api/upload/${kind}`, {
+        method: "POST",
+        headers: { "X-Tenant-ID": tenantId },
+        body: formData,
+      });
+      const payload = (await response.json()) as { detail?: string };
+      if (!response.ok) throw new Error(payload.detail || "Upload failed");
+      setUploadStatus((current) => ({
+        ...current,
+        [kind]: `${file.name} uploaded`,
+      }));
+    } catch (uploadError) {
+      setUploadStatus((current) => ({
+        ...current,
+        [kind]:
+          uploadError instanceof Error ? uploadError.message : "Upload failed",
+      }));
+    }
+  }
+
+  function UploadDropzone({
+    kind,
+    label,
+    description,
+    accept,
+    icon,
+  }: {
+    kind: "csv" | "pdf";
+    label: string;
+    description: string;
+    accept: string;
+    icon: ReactNode;
+  }) {
+    return (
+      <label
+        className="upload-dropzone"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          const file = event.dataTransfer.files[0];
+          if (file) void uploadFile(kind, file);
+        }}
+      >
+        <input
+          type="file"
+          accept={accept}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void uploadFile(kind, file);
+            event.target.value = "";
+          }}
+        />
+        <span className="upload-icon">{icon}</span>
+        <span className="upload-copy">
+          <strong>{label}</strong>
+          <small>{description}</small>
+        </span>
+        <Upload size={15} />
+        <span className="upload-status">
+          {uploadStatus[kind] || "Drop or browse"}
+        </span>
+      </label>
+    );
+  }
 
   function updateStep(node: string, status: Step["status"], detail?: string) {
     const id = stepForNode(node);
@@ -129,7 +214,10 @@ export default function Home() {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
       const response = await fetch(`${apiUrl}/api/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": tenantId,
+        },
         body: JSON.stringify({ message: query.trim() }),
       });
       if (!response.ok || !response.body)
@@ -419,6 +507,30 @@ export default function Home() {
               <span className="status-dot" /> Connected
             </strong>
             <small>Live read-only connection</small>
+          </div>
+          <div className="upload-section">
+            <div className="section-kicker upload-kicker">
+              <span>04</span> Add tenant data
+            </div>
+            <p className="upload-intro">
+              Files are isolated to <strong>{tenantId}</strong>.
+            </p>
+            <div className="upload-stack">
+              <UploadDropzone
+                kind="csv"
+                label="Business data"
+                description="CSV transaction records"
+                accept=".csv,text/csv"
+                icon={<FileSpreadsheet size={17} />}
+              />
+              <UploadDropzone
+                kind="pdf"
+                label="Corporate policies"
+                description="PDF contract or policy files"
+                accept=".pdf,application/pdf"
+                icon={<FileText size={17} />}
+              />
+            </div>
           </div>
         </aside>
         <div className="main-column">

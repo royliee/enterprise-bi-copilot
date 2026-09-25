@@ -49,16 +49,20 @@ USER QUESTION:
 
 CRITICAL RULES:
 1. Write a direct SELECT query joining `orders` and `customers`.
-2. Do NOT use placeholders, colon parameters (like :cap), or variables.
-3. Do NOT invent caps or filter discounts in SQL—retrieve all orders for the relevant region or customer so the audit layer can inspect the data.
-4. Select columns: o.order_id, c.company_name, c.region, o.product_name, o.quantity, o.unit_price, o.discount_pct, o.order_date.
-5. Return ONLY executable SQL. Do not include markdown code blocks, backticks, or explanations."""
+2. Every query MUST restrict data to tenant_id = '{state.tenant_id}' (or an equivalent JOIN condition). Never return another tenant's rows.
+3. Do NOT use placeholders, colon parameters (like :cap), or variables.
+4. Do NOT invent caps or filter discounts in SQL—retrieve all orders for the relevant region or customer so the audit layer can inspect the data.
+5. Select columns: o.order_id, c.company_name, c.region, o.product_name, o.quantity, o.unit_price, o.discount_pct, o.order_date.
+6. Return ONLY executable SQL. Do not include markdown code blocks, backticks, or explanations."""
 
     response = llm.invoke(prompt)
     raw_sql = response.content.strip().replace("```sql", "").replace("```", "").strip()
     
     trace.append({"step": "sql_execution", "sql_generated": raw_sql})
-    query_data = execute_readonly_query(raw_sql)
+    if "tenant_id" not in raw_sql.lower():
+        query_data = {"error": "Security violation: Generated SQL must include a tenant_id restriction"}
+    else:
+        query_data = execute_readonly_query(raw_sql)
     
     return {
         "sql_query": raw_sql,
@@ -79,7 +83,7 @@ Return ONLY the search query string with no explanation."""
     search_query = response.content.strip().strip('"')
     
     trace.append({"step": "rag_search", "rag_query": search_query})
-    retrieved = search_policy_documents(search_query, top_k=2)
+    retrieved = search_policy_documents(search_query, tenant_id=state.tenant_id, top_k=2)
     
     return {
         "rag_query": search_query,
